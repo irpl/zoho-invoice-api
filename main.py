@@ -92,7 +92,7 @@ def get_zoho_items(access_token: str):
             unit=item.get("unit"),
             status=item["status"]
         )
-        for item in items_data
+        for item in filter(lambda x: x["status"] == "active", items_data)
     ]
 
 def get_zoho_item_rates_by_ids(item_list: List[str], access_token: str) -> List[ItemRate]:
@@ -192,14 +192,14 @@ async def get_items(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post(f"{settings.API_V1_PREFIX}/item-rates")
-async def get_item_rates(item_ids: List[str], db: Session = Depends(get_db)):
-    try:
-        access_token = get_zoho_access_token(db)
-        item_rates = get_zoho_item_rates_by_ids(item_ids, access_token)
-        return {"items": item_rates}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @app.post(f"{settings.API_V1_PREFIX}/item-rates")
+# async def get_item_rates(item_ids: List[str], db: Session = Depends(get_db)):
+#     try:
+#         access_token = get_zoho_access_token(db)
+#         item_rates = get_zoho_item_rates_by_ids(item_ids, access_token)
+#         return {"items": item_rates}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post(f"{settings.API_V1_PREFIX}/create-invoice")
 async def create_invoice_endpoint(request: CreateInvoiceRequest, db: Session = Depends(get_db)):
