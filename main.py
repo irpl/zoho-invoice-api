@@ -1,14 +1,28 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import requests
 from typing import List, Optional
 from config import settings
+from models import CustomerInfo, CreateInvoiceRequest, ZohoItem, ItemRate
+from database import get_db, init_db, get_refresh_token, update_access_token, ZohoToken, set_initial_refresh_token, SessionLocal
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_PREFIX}/openapi.json"
 )
+
+# Initialize database and set initial refresh token if needed
+init_db()
+try:
+    with SessionLocal() as db:
+        get_refresh_token(db)
+except Exception:
+    if not settings.ZOHO_REFRESH_TOKEN:
+        raise Exception("ZOHO_REFRESH_TOKEN environment variable is required for initial setup")
+    with SessionLocal() as db:
+        set_initial_refresh_token(db, settings.ZOHO_REFRESH_TOKEN)
 
 # Enable CORS
 app.add_middleware(
@@ -19,44 +33,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Models
-class CustomerInfo(BaseModel):
-    first_name: str
-    last_name: str
-    email: str
-    phone: Optional[str] = None
-    billing_address: Optional[dict] = None
-
-class InvoiceItem(BaseModel):
-    item_id: str
-    quantity: int
-    # rate: float
-
-class CreateInvoiceRequest(BaseModel):
-    customer_info: CustomerInfo
-    items: List[InvoiceItem]
-    notes: Optional[str] = None
-
-class ZohoItem(BaseModel):
-    item_id: str
-    name: str
-    description: Optional[str] = None
-    rate: float
-    unit: Optional[str] = None
-    status: str
-
-class ItemRate(BaseModel):
-    item_id: str
-    rate: float
-
-class ItemRateResponse(BaseModel):
-    items: List[ItemRate]
-
 # Zoho API Helper Functions
-def get_zoho_access_token():
+def get_zoho_access_token(db: Session):
+    # Check if we have a valid access token
+    token = db.query(ZohoToken).first()
+    if token and token.access_token and token.access_token_expiry:
+        if token.access_token_expiry > datetime.now(timezone.utc):
+            return token.access_token
+
+    # If no valid token, refresh it
     url = "https://accounts.zoho.com/oauth/v2/token"
+    refresh_token = get_refresh_token(db)
     data = {
-        "refresh_token": settings.ZOHO_REFRESH_TOKEN,
+        "refresh_token": refresh_token,
         "client_id": settings.ZOHO_CLIENT_ID,
         "client_secret": settings.ZOHO_CLIENT_SECRET,
         "grant_type": "refresh_token"
@@ -64,7 +53,24 @@ def get_zoho_access_token():
     response = requests.post(url, data=data)
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to get Zoho access token")
-    return response.json()["access_token"]
+    
+    response_data = response.json()
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=response_data["expires_in"])
+    update_access_token(db, response_data["access_token"], expiry)
+    
+    return response_data["access_token"]
+
+# @app.post(f"{settings.API_V1_PREFIX}/update-token")
+# async def update_token(new_token: str, db: Session = Depends(get_db)):
+#     """Update the Zoho refresh token in the database"""
+#     token = db.query(ZohoToken).first()
+#     if not token:
+#         token = ZohoToken(refresh_token=new_token)
+#         db.add(token)
+#     else:
+#         token.refresh_token = new_token
+#     db.commit()
+#     return {"message": "Token updated successfully"}
 
 def get_zoho_items(access_token: str):
     url = "https://invoice.zoho.com/api/v3/items"
@@ -178,27 +184,27 @@ def create_invoice(customer_id: str, items: List[dict], notes: Optional[str], ac
 
 # API Endpoints
 @app.get(f"{settings.API_V1_PREFIX}/items")
-async def get_items():
+async def get_items(db: Session = Depends(get_db)):
     try:
-        access_token = get_zoho_access_token()
+        access_token = get_zoho_access_token(db)
         items = get_zoho_items(access_token)
         return {"items": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post(f"{settings.API_V1_PREFIX}/item-rates")
-async def get_item_rates(item_ids: List[str]):
+async def get_item_rates(item_ids: List[str], db: Session = Depends(get_db)):
     try:
-        access_token = get_zoho_access_token()
+        access_token = get_zoho_access_token(db)
         item_rates = get_zoho_item_rates_by_ids(item_ids, access_token)
         return {"items": item_rates}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post(f"{settings.API_V1_PREFIX}/create-invoice")
-async def create_invoice_endpoint(request: CreateInvoiceRequest):
+async def create_invoice_endpoint(request: CreateInvoiceRequest, db: Session = Depends(get_db)):
     try:
-        access_token = get_zoho_access_token()
+        access_token = get_zoho_access_token(db)
         
         # Check if customer exists
         customer_id = find_customer_by_email(request.customer_info.email, access_token)
