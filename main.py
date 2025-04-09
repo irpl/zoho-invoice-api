@@ -21,7 +21,8 @@ app.add_middleware(
 
 # Models
 class CustomerInfo(BaseModel):
-    display_name: str
+    first_name: str
+    last_name: str
     email: str
     phone: Optional[str] = None
     billing_address: Optional[dict] = None
@@ -141,9 +142,16 @@ def create_customer(customer_info: CustomerInfo, access_token: str):
         "Content-Type": "application/json"
     }
     data = {
-        "contact_name": customer_info.display_name,
-        "email": customer_info.email,
-        "phone": customer_info.phone,
+        "contact_name": customer_info.first_name + " " + customer_info.last_name,
+        "contact_persons": [
+            {
+                "first_name": customer_info.first_name,
+                "last_name": customer_info.last_name,
+                "email": customer_info.email,
+                "phone": customer_info.phone,
+                "is_primary_contact": True
+            }
+        ],
         "billing_address": customer_info.billing_address
     }
     response = requests.post(url, headers=headers, json=data)
