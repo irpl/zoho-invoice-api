@@ -38,7 +38,7 @@ def get_zoho_access_token(db: Session):
     # Check if we have a valid access token
     token = db.query(ZohoToken).first()
     if token and token.access_token and token.access_token_expiry:
-        if token.access_token_expiry > datetime.now(timezone.utc):
+        if token.access_token_expiry.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
             return token.access_token
 
     # If no valid token, refresh it
