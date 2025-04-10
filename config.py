@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ZOHO_CLIENT_SECRET: str = os.getenv("ZOHO_CLIENT_SECRET", "")
     ZOHO_REFRESH_TOKEN: str = os.getenv("ZOHO_REFRESH_TOKEN", "")
     ZOHO_ORGANIZATION_ID: str = os.getenv("ZOHO_ORGANIZATION_ID", "")
+    ORIGINS: str = os.getenv("ORIGINS", "")
     
     # API Configuration
     API_V1_PREFIX: str = "/api/v1"

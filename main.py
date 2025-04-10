@@ -25,9 +25,10 @@ except Exception:
         set_initial_refresh_token(db, settings.ZOHO_REFRESH_TOKEN)
 
 # Enable CORS
+origins = settings.ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
+    allow_origins=origins,  # In production, replace with your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
