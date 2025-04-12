@@ -218,7 +218,7 @@ async def create_invoice_endpoint(request: CreateInvoiceRequest, db: Session = D
 
         # Create the invoice
         line_items = []
-        for item, item_rate in zip(request.items, item_rates):
+        for item, item_rate in zip(request.items, item_rates.reverse()):
             line_items.append({
                 "item_id": item.item_id,
                 "quantity": item.quantity,
