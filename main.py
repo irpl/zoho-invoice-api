@@ -215,10 +215,10 @@ async def create_invoice_endpoint(request: CreateInvoiceRequest, db: Session = D
             customer_id = create_customer(request.customer_info, access_token)
         
         item_rates = get_zoho_item_rates_by_ids([item.item_id for item in request.items], access_token)
-
+        item_rates.reverse()
         # Create the invoice
         line_items = []
-        for item, item_rate in zip(request.items, item_rates.reverse()):
+        for item, item_rate in zip(request.items, item_rates):
             line_items.append({
                 "item_id": item.item_id,
                 "quantity": item.quantity,
