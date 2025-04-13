@@ -7,6 +7,10 @@ from models import CustomerInfo, CreateInvoiceRequest, ZohoItem, ItemRate
 from database import get_db, init_db, get_refresh_token, update_access_token, ZohoToken, set_initial_refresh_token, SessionLocal
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -107,18 +111,23 @@ def get_zoho_item_rates_by_ids(item_list: List[str], access_token: str) -> List[
         raise HTTPException(status_code=500, detail="Failed to fetch items from Zoho")
     
     items_data = response.json().get("items", [])
+    
+    # Create a dictionary for O(1) lookups
+    item_dict = {item["item_id"]: item for item in items_data}
+    
+    # Fetch rates for requested items
     item_rates = []
+    missing_ids = []
     
-    for item in items_data:
-        if item["item_id"] in item_list:
+    for item_id in item_list:
+        if item_id in item_dict:
             item_rates.append(ItemRate(
-                item_id=item["item_id"],
-                rate=float(item["rate"])
+                item_id=item_id,
+                rate=float(item_dict[item_id]["rate"])
             ))
+        else:
+            missing_ids.append(item_id)
     
-    # Check if all requested items were found
-    found_ids = {rate.item_id for rate in item_rates}
-    missing_ids = set(item_list) - found_ids
     if missing_ids:
         raise HTTPException(
             status_code=404,
@@ -180,6 +189,7 @@ def create_invoice(customer_id: str, items: List[dict], notes: Optional[str], ac
     }
     response = requests.post(url, headers=headers, json=data)
     if response.status_code != 201:
+        logger.error(f"Failed to create invoice: {response.json()}")
         raise HTTPException(status_code=500, detail="Failed to create invoice")
     return response.json()["invoice"]
 
@@ -215,16 +225,8 @@ async def create_invoice_endpoint(request: CreateInvoiceRequest, db: Session = D
             customer_id = create_customer(request.customer_info, access_token)
         
         item_rates = get_zoho_item_rates_by_ids([item.item_id for item in request.items], access_token)
-        # item_rates.reverse()
-        # Create the invoice
-        # line_items = []
+        
         line_items = [{"item_id": item.item_id, "quantity": item.quantity, "rate": item_rate.rate} for item in request.items for item_rate in item_rates if item.item_id == item_rate.item_id]
-        # for item, item_rate in line_items:
-        #     line_items.append({
-        #         "item_id": item.item_id,
-        #         "quantity": item.quantity,
-        #         "rate": item_rate.rate
-        #     })
         
         invoice = create_invoice(customer_id, line_items, request.notes, access_token)
         
