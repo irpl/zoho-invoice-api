@@ -193,6 +193,43 @@ def create_invoice(customer_id: str, items: List[dict], notes: Optional[str], ac
         raise HTTPException(status_code=500, detail="Failed to create invoice")
     return response.json()["invoice"]
 
+def send_telegram_notification(invoice: dict, customer_info: CustomerInfo):
+    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+        return
+
+    try:
+        line_items_text = ""
+        for item in invoice.get("line_items", []):
+            name = item.get("name", item.get("item_id", "Unknown"))
+            qty = item.get("quantity", 0)
+            rate = item.get("rate", 0)
+            amount = item.get("item_total", qty * rate)
+            line_items_text += f"  • {name} — Qty: {qty}, Rate: {rate}, Total: {amount}\n"
+
+        message = (
+            f"🧾 <b>New Invoice Created</b>\n\n"
+            f"<b>Invoice #:</b> {invoice.get('invoice_number', 'N/A')}\n"
+            f"<b>Customer:</b> {customer_info.first_name} {customer_info.last_name}\n"
+            f"<b>Email:</b> {customer_info.email}\n\n"
+            f"<b>Line Items:</b>\n{line_items_text}\n"
+            f"<b>Total:</b> {invoice.get('currency_symbol', '$')}{invoice.get('total', 'N/A')}\n"
+        )
+
+        invoice_id = invoice.get("invoice_id")
+        if invoice_id:
+            zoho_url = f"https://invoice.zoho.com/app#/invoices/{invoice_id}"
+            message += f"\n<a href=\"{zoho_url}\">View in Zoho</a>"
+
+        url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+        requests.post(url, json={
+            "chat_id": settings.TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        })
+    except Exception as e:
+        logger.error(f"Failed to send Telegram notification: {e}")
+
 # API Endpoints
 @app.get(f"{settings.API_V1_PREFIX}/items")
 async def get_items(db: Session = Depends(get_db)):
@@ -229,7 +266,9 @@ async def create_invoice_endpoint(request: CreateInvoiceRequest, db: Session = D
         line_items = [{"item_id": item.item_id, "quantity": item.quantity, "rate": item_rate.rate} for item in request.items for item_rate in item_rates if item.item_id == item_rate.item_id]
         
         invoice = create_invoice(customer_id, line_items, request.notes, access_token)
-        
+
+        send_telegram_notification(invoice, request.customer_info)
+
         return {"message": "Invoice created successfully", "invoice": invoice}
     
     except Exception as e:
