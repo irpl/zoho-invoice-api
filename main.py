@@ -198,26 +198,31 @@ def send_telegram_notification(invoice: dict, customer_info: CustomerInfo):
         return
 
     try:
+        from html import escape
+
         line_items_text = ""
         for item in invoice.get("line_items", []):
-            name = item.get("name", item.get("item_id", "Unknown"))
+            name = escape(str(item.get("name", item.get("item_id", "Unknown"))))
             qty = item.get("quantity", 0)
             rate = item.get("rate", 0)
             amount = item.get("item_total", qty * rate)
             line_items_text += f"  • {name} — Qty: {qty}, Rate: {rate}, Total: {amount}\n"
 
+        customer_name = escape(f"{customer_info.first_name} {customer_info.last_name}")
+        customer_email = escape(customer_info.email)
+
         message = (
             f"🧾 <b>New Invoice Created</b>\n\n"
-            f"<b>Invoice #:</b> {invoice.get('invoice_number', 'N/A')}\n"
-            f"<b>Customer:</b> {customer_info.first_name} {customer_info.last_name}\n"
-            f"<b>Email:</b> {customer_info.email}\n\n"
+            f"<b>Invoice #:</b> {escape(str(invoice.get('invoice_number', 'N/A')))}\n"
+            f"<b>Customer:</b> {customer_name}\n"
+            f"<b>Email:</b> {customer_email}\n\n"
             f"<b>Line Items:</b>\n{line_items_text}\n"
-            f"<b>Total:</b> {invoice.get('currency_symbol', '$')}{invoice.get('total', 'N/A')}\n"
+            f"<b>Total:</b> {escape(str(invoice.get('currency_symbol', '$')))}{escape(str(invoice.get('total', 'N/A')))}\n"
         )
 
         invoice_id = invoice.get("invoice_id")
         if invoice_id:
-            zoho_url = f"https://invoice.zoho.com/app#/invoices/{invoice_id}"
+            zoho_url = f"https://invoice.zoho.com/app#/invoices/{escape(str(invoice_id))}"
             message += f"\n<a href=\"{zoho_url}\">View in Zoho</a>"
 
         url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -226,7 +231,7 @@ def send_telegram_notification(invoice: dict, customer_info: CustomerInfo):
             "text": message,
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
-        })
+        }, timeout=10)
     except Exception as e:
         logger.error(f"Failed to send Telegram notification: {e}")
 
