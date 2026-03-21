@@ -1,4 +1,8 @@
-# Zoho Invoice API
+# Zoho Invoice API (Deprecated)
+
+> **This project is no longer actively used.** The Zoho Invoice API has been merged directly into the [stores](https://github.com/irpl/stores) Next.js application as API routes, eliminating the need for a separate Python backend. This reduces infrastructure complexity and allows the entire stack to be deployed as a single application.
+
+---
 
 A FastAPI backend that integrates with Zoho Invoice API to create invoices and manage customers.
 
@@ -74,4 +78,4 @@ Once the server is running, you can access the API documentation at:
 
 - Make sure you have valid Zoho API credentials
 - The API uses OAuth2 authentication with refresh tokens
-- In production, update the CORS settings to allow only your frontend domain 
+- In production, update the CORS settings to allow only your frontend domain
